@@ -1,10 +1,49 @@
 import { NextResponse } from "next/server";
-import { runCliJson } from "@/lib/openclaw";
+import { runCliJson, gatewayCall } from "@/lib/openclaw";
 import { getOpenClawBin, getGatewayUrl } from "@/lib/paths";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
 const exec = promisify(execFile);
+
+// ── Auto-enable OpenResponses endpoint for streaming chat ──
+let _responsesEndpointEnsured = false;
+
+function ensureResponsesEndpoint(): void {
+  if (_responsesEndpointEnsured) return;
+  _responsesEndpointEnsured = true;
+
+  // Fire-and-forget — don't block the health check response
+  (async () => {
+    try {
+      const cfg = await gatewayCall<{ hash?: string; config?: Record<string, unknown> }>(
+        "config.get",
+        undefined,
+        8000,
+      );
+      // Check if already enabled
+      const gw = (cfg?.config as Record<string, unknown>)?.gateway as Record<string, unknown> | undefined;
+      const http = gw?.http as Record<string, unknown> | undefined;
+      const endpoints = http?.endpoints as Record<string, unknown> | undefined;
+      const responses = endpoints?.responses as Record<string, unknown> | undefined;
+      if (responses?.enabled === true) return; // Already enabled
+
+      await gatewayCall(
+        "config.patch",
+        {
+          raw: JSON.stringify({
+            gateway: { http: { endpoints: { responses: { enabled: true } } } },
+          }),
+          baseHash: String(cfg?.hash || ""),
+        },
+        10000,
+      );
+    } catch {
+      // Non-fatal — streaming falls back to CLI
+      _responsesEndpointEnsured = false; // retry next health check
+    }
+  })();
+}
 
 async function runGatewayServiceCommand(
   subcommand: "restart" | "stop" | "start",
@@ -60,7 +99,10 @@ export async function GET() {
     });
   }
 
-  // Gateway is alive — try to get full health data via CLI (directly,
+  // Gateway is alive — ensure OpenResponses endpoint is enabled for streaming chat
+  ensureResponsesEndpoint();
+
+  // Try to get full health data via CLI (directly,
   // bypassing auto-transport to avoid the recursive exec-through-gateway issue).
   try {
     const bin = await getOpenClawBin();

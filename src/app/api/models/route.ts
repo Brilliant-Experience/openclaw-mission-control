@@ -1116,11 +1116,60 @@ export async function GET(request: NextRequest) {
     }
 
     // scope=configured
+    const fileSnapshot = await readConfigFileSnapshot();
     const args = ["models", "list"];
     if (agentId) args.push("--agent", agentId);
     try {
-      const list = await runCliJson<{ models: ModelInfo[] }>(args, 10000);
-      return jsonNoStore({ models: list.models || [] });
+      const [listResult, statusData, ollamaModels] = await Promise.all([
+        runCliJson<{ models: ModelInfo[] }>(args, 10000).catch((err) => ({
+          error: String(err),
+        })),
+        runCliJson<Record<string, unknown>>(
+          agentId ? ["models", "status", "--agent", agentId] : ["models", "status"],
+          10000,
+        ).catch(() => null),
+        readOllamaLocalModels(),
+      ]);
+
+      const listWarning = "error" in listResult ? listResult.error : null;
+      const listModels =
+        "models" in listResult && Array.isArray(listResult.models)
+          ? mergeModelRows(listResult.models, ollamaModels)
+          : ollamaModels;
+
+      const authProviders = uniqueStrings([
+        ...((((statusData?.auth as { providers?: Array<{ provider?: string }> } | undefined))?.providers || [])
+          .map((entry) => String(entry?.provider || "").trim())
+          .filter(Boolean)),
+        ...(fileSnapshot?.authProviders || []),
+      ]);
+
+      const configuredRefs = uniqueStrings([
+        ...((Array.isArray(statusData?.allowed) ? statusData.allowed : []).map((value) =>
+          String(value || "").trim(),
+        )),
+        ...(fileSnapshot?.configuredModels || []),
+      ]);
+      const fallbackModels: ModelInfo[] = configuredRefs.map((key) => {
+        const provider = providerFromModelKey(key);
+        const hasConfiguredAuth = authProviders.includes(provider);
+        return {
+          key,
+          name: key,
+          input: "",
+          contextWindow: 0,
+          local: localProvider(provider),
+          available: localProvider(provider) || hasConfiguredAuth,
+          tags: ["configured"],
+          missing: false,
+        };
+      });
+
+      const models = mergeModelRows(listModels, fallbackModels);
+      return jsonNoStore({
+        models,
+        warning: listWarning || undefined,
+      });
     } catch (err) {
       return jsonNoStore({
         models: [],

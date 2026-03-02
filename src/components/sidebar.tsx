@@ -91,7 +91,7 @@ const navItems: NavItem[] = [
   { section: "search", label: "Web Search", icon: Search, href: "/search" },
   // ── Configuration ──
   { group: "Configuration", section: "models", label: "Models", icon: Cpu, href: "/models" },
-  { section: "accounts", label: "Accounts & Keys", icon: KeyRound, href: "/accounts" },
+  { section: "accounts", label: "Keys & Access", icon: KeyRound, href: "/accounts" },
   { section: "security", label: "Security", icon: ShieldCheck, href: "/security" },
   { section: "hooks", label: "Hooks", icon: Webhook, href: "/hooks" },
   ...(!isAgentbayHosting ? [{ section: "tailscale", label: "Tailscale", icon: Waypoints, href: "/tailscale" } as NavItem] : []),

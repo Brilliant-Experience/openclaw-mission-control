@@ -77,6 +77,18 @@ function formatModel(model: string) {
   return parts[parts.length - 1] || model;
 }
 
+function possessiveLabel(name: string) {
+  return name.endsWith("s") ? `${name}'` : `${name}'s`;
+}
+
+function createChatSessionKey(agentId: string) {
+  const suffix =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return `agent:${agentId}:mission-control:${suffix}`;
+}
+
 /** Convert File[] to FileUIPart[] (data URLs) for sendMessage */
 async function filesToUIParts(files: File[]): Promise<Array<{ type: "file"; mediaType: string; filename?: string; url: string }>> {
   return Promise.all(
@@ -469,8 +481,20 @@ function ChatPanel({
     getTimeFormatSnapshot,
     getTimeFormatServerSnapshot,
   );
+  const modelStorageKey = `mc-chat-model:${agentId}`;
   const [inputValue, setInputValue] = useState("");
-  const [modelOverride, setModelOverride] = useState<string | null>(null);
+  const [chatSessionKey, setChatSessionKey] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return createChatSessionKey(agentId);
+  });
+  const [modelOverride, setModelOverride] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return localStorage.getItem(modelStorageKey) || null;
+    } catch {
+      return null;
+    }
+  });
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -490,27 +514,67 @@ function ChatPanel({
     return availableModels.some((m) => m.key.split("/")[0] === defaultProvider);
   }, [modelsLoaded, availableModels, agentModel, agentModelKnown]);
 
-  // Auto-select an available model when the default model's provider has no
-  // configured API key. This prevents chat from failing because the agent's
-  // default model (e.g. anthropic/claude-sonnet-*) belongs to a provider
-  // that the user hasn't connected yet.
-  useEffect(() => {
-    if (!modelsLoaded || availableModels.length === 0 || modelOverride) return;
-    if (!agentModelKnown) return; // wait for real agent data before deciding
-    if (defaultModelAvailable) return;
+  const manualChatModel = useMemo(() => {
+    const requested = modelOverride?.trim() || null;
+    if (!requested) return null;
+    if (!modelsLoaded || availableModels.length === 0) return requested;
+    return availableModels.some((m) => m.key === requested) ? requested : null;
+  }, [availableModels, modelOverride, modelsLoaded]);
 
-    // Pick the best available model as an override
+  const automaticChatModel = useMemo(() => {
+    if (manualChatModel) return null;
+    if (!modelsLoaded || availableModels.length === 0 || !agentModelKnown) return null;
+    if (defaultModelAvailable) return null;
     const preferredDefaults = Object.values(PROVIDER_DEFAULT_MODELS);
-    const best =
-      availableModels.find((m) => preferredDefaults.includes(m.key)) ||
-      availableModels[0];
-    if (best) setModelOverride(best.key);
-  }, [modelsLoaded, availableModels, modelOverride, defaultModelAvailable, agentModelKnown]);
+    return (
+      availableModels.find((m) => preferredDefaults.includes(m.key))?.key ||
+      availableModels[0]?.key ||
+      null
+    );
+  }, [
+    agentModelKnown,
+    availableModels,
+    defaultModelAvailable,
+    manualChatModel,
+    modelsLoaded,
+  ]);
+
+  const activeChatModel = manualChatModel ?? automaticChatModel;
+  const modelOverrideSource = manualChatModel
+    ? "manual"
+    : automaticChatModel
+      ? "automatic"
+      : "agent";
+  const activeChatModelLabel = activeChatModel
+    ? formatModel(activeChatModel)
+    : `${possessiveLabel(agentName)} setup`;
+  const agentSetupLabel = agentModelKnown ? formatModel(agentModel) : "unknown";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (modelOverride && (!modelsLoaded || availableModels.some((m) => m.key === modelOverride))) {
+        localStorage.setItem(modelStorageKey, modelOverride);
+      } else {
+        localStorage.removeItem(modelStorageKey);
+      }
+    } catch {
+      // Ignore storage failures; they should not block chat.
+    }
+  }, [availableModels, modelOverride, modelStorageKey, modelsLoaded]);
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const list = Array.isArray(files) ? files : Array.from(files);
     if (list.length) setAttachedFiles((prev) => [...prev, ...list]);
   }, []);
+
+  const ensureChatSessionKey = useCallback(() => {
+    const existing = chatSessionKey.trim();
+    if (existing) return existing;
+    const next = createChatSessionKey(agentId);
+    setChatSessionKey(next);
+    return next;
+  }, [agentId, chatSessionKey]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -547,14 +611,13 @@ function ChatPanel({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [modelMenuOpen]);
 
-  // Create transport that sends agentId alongside messages
+  // Create transport for chat requests. Per-request fields are attached via sendMessage.
   const transport = useMemo(
     () =>
       new TextStreamChatTransport({
         api: "/api/chat",
-        body: { agentId },
       }),
-    [agentId]
+    []
   );
 
   const { messages, sendMessage, status, setMessages, error } = useChat({
@@ -606,6 +669,34 @@ function ChatPanel({
     }
   }, [isSelected, isVisible, agentId]);
 
+  const sendWithActiveModel = useCallback(
+    async (
+      payload: {
+        text: string;
+        files?: Array<{ type: "file"; mediaType: string; filename?: string; url: string }>;
+      },
+    ) => {
+      const sessionKey = ensureChatSessionKey();
+      await sendMessage(payload, {
+        body: activeChatModel
+          ? { agentId, model: activeChatModel, sessionKey }
+          : { agentId, sessionKey },
+      });
+    },
+    [activeChatModel, agentId, ensureChatSessionKey, sendMessage],
+  );
+
+  const retryLastUserMessage = useCallback(() => {
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    if (!lastUser) return;
+    const retryText =
+      lastUser.parts
+        ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
+        .map((p) => p.text)
+        .join("") || "";
+    if (retryText) void sendWithActiveModel({ text: retryText });
+  }, [messages, sendWithActiveModel]);
+
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
     const hasFiles = attachedFiles.length > 0;
@@ -615,17 +706,24 @@ function ChatPanel({
     if (inputRef.current) inputRef.current.style.height = "auto";
     const fileParts = hasFiles ? await filesToUIParts(attachedFiles) : undefined;
     setAttachedFiles([]);
-    await sendMessage(
+    await sendWithActiveModel(
       { text: text || "", files: fileParts },
-      { body: { model: modelOverride ?? undefined } }
     );
-  }, [inputValue, isLoading, noApiKeys, attachedFiles, modelOverride, sendMessage, onClearPostOnboarding]);
+  }, [
+    attachedFiles,
+    inputValue,
+    isLoading,
+    noApiKeys,
+    onClearPostOnboarding,
+    sendWithActiveModel,
+  ]);
 
   const clearChat = useCallback(() => {
     setMessages([]);
     prevMsgCountRef.current = 0;
+    setChatSessionKey(createChatSessionKey(agentId));
     setTimeout(() => inputRef.current?.focus(), 100);
-  }, [setMessages]);
+  }, [agentId, setMessages]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -680,15 +778,18 @@ function ChatPanel({
                 <p className="mt-1 text-xs text-muted-foreground">
                   Send a message to start a conversation with your agent.
                 </p>
-                {(modelOverride || agentModelKnown) && (
+                {(activeChatModel || agentModelKnown) && (
                   <p className="mt-0.5 text-xs text-muted-foreground/60">
-                    Using {formatModel(modelOverride ?? agentModel)}
+                    {activeChatModel
+                      ? `This chat will use ${activeChatModelLabel}.`
+                      : `This chat follows ${possessiveLabel(agentName)} setup (${agentSetupLabel}).`}
                   </p>
                 )}
-                {modelOverride && !defaultModelAvailable && agentModelKnown && (
+                {activeChatModel && modelOverrideSource === "automatic" && !defaultModelAvailable && agentModelKnown && (
                   <p className="mt-2 max-w-xs text-[11px] leading-relaxed text-amber-500/70">
-                    Auto-switched from {formatModel(agentModel)} because that provider
-                    isn&apos;t connected yet. You can change this in the model picker below.
+                    Mission Control temporarily switched this chat from {agentSetupLabel}
+                    to {activeChatModelLabel} because the agent&apos;s setup isn&apos;t
+                    ready right now.
                   </p>
                 )}
               </div>
@@ -713,7 +814,7 @@ function ChatPanel({
                     type="button"
                     onClick={() => {
                       onClearPostOnboarding();
-                      sendMessage({ text: prompt });
+                      void sendWithActiveModel({ text: prompt });
                     }}
                     className="rounded-lg border border-foreground/10 bg-muted/60 px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground/70"
                   >
@@ -833,8 +934,8 @@ function ChatPanel({
               );
             })}
 
-            {/* Loading indicator */}
-            {isLoading && (
+            {/* Loading indicator — only when waiting for first token, not during streaming */}
+            {status === "submitted" && (
               <div className="mb-6 flex gap-3">
                 <div
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-xs"
@@ -848,7 +949,9 @@ function ChatPanel({
                     <span className="h-1 w-1 animate-bounce rounded-full bg-current [animation-delay:300ms]" />
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {agentName} is thinking...
+                    {activeChatModel
+                      ? `${agentName} is thinking with ${activeChatModelLabel}...`
+                      : `${agentName} is thinking...`}
                   </span>
                 </div>
               </div>
@@ -869,6 +972,29 @@ function ChatPanel({
                   </p>
                   <ApiKeySetup onKeySaved={onKeySaved} compact />
                 </div>
+              ) : /avoid sending your message with a different model|switch this chat back to the agent setup|could not use .* because the OpenClaw gateway/i.test(error.message) ? (
+                <div className="mb-6 rounded-lg border border-violet-500/20 bg-violet-500/5 px-4 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-violet-500">
+                      Your selected chat model was protected
+                    </span>
+                    <button
+                      type="button"
+                      onClick={retryLastUserMessage}
+                      className="flex items-center gap-1 rounded px-2 py-1 text-xs text-violet-500 transition-colors hover:bg-violet-500/10"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Try again
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-violet-500/80">
+                    Mission Control stopped the request instead of sending it with the wrong model.
+                    You can try again, or switch this chat back to the agent setup below.
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-violet-500/60">
+                    {error.message}
+                  </p>
+                </div>
               ) : /timeout|timed out|ECONNREFUSED|ENOTFOUND|fetch failed|network/i.test(error.message) ? (
                 /* Connection / network error */
                 <div className="mb-6 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
@@ -878,15 +1004,7 @@ function ChatPanel({
                     </span>
                     <button
                       type="button"
-                      onClick={() => {
-                        const lastUser = [...messages].reverse().find((m) => m.role === "user");
-                        if (lastUser) {
-                          const retryText = lastUser.parts
-                            ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
-                            .map((p) => p.text).join("") || "";
-                          if (retryText) sendMessage({ text: retryText });
-                        }
-                      }}
+                      onClick={retryLastUserMessage}
                       className="flex items-center gap-1 rounded px-2 py-1 text-xs text-amber-400 transition-colors hover:bg-amber-500/10"
                     >
                       <RefreshCw className="h-3 w-3" />
@@ -907,15 +1025,7 @@ function ChatPanel({
                     </span>
                     <button
                       type="button"
-                      onClick={() => {
-                        const lastUser = [...messages].reverse().find((m) => m.role === "user");
-                        if (lastUser) {
-                          const retryText = lastUser.parts
-                            ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
-                            .map((p) => p.text).join("") || "";
-                          if (retryText) sendMessage({ text: retryText });
-                        }
-                      }}
+                      onClick={retryLastUserMessage}
                       className="flex items-center gap-1 rounded px-2 py-1 text-xs text-amber-400 transition-colors hover:bg-amber-500/10"
                     >
                       <RefreshCw className="h-3 w-3" />
@@ -936,22 +1046,7 @@ function ChatPanel({
                     </span>
                     <button
                       type="button"
-                      onClick={() => {
-                        const lastUser = [...messages]
-                          .reverse()
-                          .find((m) => m.role === "user");
-                        if (lastUser) {
-                          const retryText =
-                            lastUser.parts
-                              ?.filter(
-                                (p): p is { type: "text"; text: string } =>
-                                  p.type === "text"
-                              )
-                              .map((p) => p.text)
-                              .join("") || "";
-                          if (retryText) sendMessage({ text: retryText });
-                        }
-                      }}
+                      onClick={retryLastUserMessage}
                       className="flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-500/10"
                     >
                       <RefreshCw className="h-3 w-3" />
@@ -1046,39 +1141,43 @@ function ChatPanel({
                   <button
                     type="button"
                     onClick={() => setModelMenuOpen((open) => !open)}
-                    title={modelOverride ? formatModel(modelOverride) : `AI model: ${formatModel(agentModel)}`}
+                    title={
+                      activeChatModel
+                        ? `This chat uses ${activeChatModelLabel}`
+                        : `This chat follows ${possessiveLabel(agentName)} setup (${agentSetupLabel})`
+                    }
                     className={cn(
                       "flex h-7 items-center gap-1 rounded-md px-1.5 text-xs transition-colors",
-                      modelOverride
+                      activeChatModel
                         ? "bg-violet-500/10 text-violet-400"
                         : "text-muted-foreground/40 hover:bg-muted hover:text-foreground/70"
                     )}
                   >
                     <Brain className="h-3.5 w-3.5" />
-                    {modelOverride && (
-                      <span className="hidden text-xs sm:inline">{formatModel(modelOverride)}</span>
-                    )}
+                    <span className="hidden text-xs sm:inline">
+                      {activeChatModel
+                        ? `Chat: ${activeChatModelLabel}`
+                        : `Chat: ${agentSetupLabel}`}
+                    </span>
                   </button>
                   {modelMenuOpen && (
                     <div className="absolute left-0 bottom-full z-50 mb-1 min-w-48 overflow-hidden rounded-lg border border-border bg-popover py-1 shadow-xl backdrop-blur-sm animate-enter">
-                      {defaultModelAvailable && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setModelOverride(null);
-                            setModelMenuOpen(false);
-                          }}
-                          className={cn(
-                            "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors",
-                            !modelOverride
-                              ? "bg-violet-500/10 text-violet-600 dark:text-violet-300"
-                              : "text-foreground/80 hover:bg-muted hover:text-foreground"
-                          )}
-                        >
-                          <Brain className="h-3.5 w-3.5 shrink-0" />
-                          Default ({formatModel(agentModel)})
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModelOverride(null);
+                          setModelMenuOpen(false);
+                        }}
+                        className={cn(
+                          "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors",
+                          !activeChatModel
+                            ? "bg-violet-500/10 text-violet-600 dark:text-violet-300"
+                            : "text-foreground/80 hover:bg-muted hover:text-foreground"
+                        )}
+                      >
+                        <Brain className="h-3.5 w-3.5 shrink-0" />
+                        Use agent setup ({agentSetupLabel})
+                      </button>
                       {availableModels.map((m) => (
                         <button
                           key={m.key}
@@ -1089,14 +1188,14 @@ function ChatPanel({
                           }}
                           className={cn(
                             "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors",
-                            modelOverride === m.key
+                            activeChatModel === m.key
                               ? "bg-violet-500/10 text-violet-600 dark:text-violet-300"
                               : "text-foreground/80 hover:bg-muted hover:text-foreground"
                           )}
                         >
-                          <Cpu className="h-3.5 w-3.5 shrink-0" />
-                          {formatModel(m.name)}
-                        </button>
+                            <Cpu className="h-3.5 w-3.5 shrink-0" />
+                            {formatModel(m.name)}
+                          </button>
                       ))}
                     </div>
                   )}
@@ -1112,6 +1211,24 @@ function ChatPanel({
                   </button>
                 )}
               </div>
+              {activeChatModel && (
+                <div className="flex items-center justify-between gap-2 border-t border-foreground/8 px-3 pb-2 pt-1.5 text-[11px] sm:px-4">
+                  <p className="min-w-0 truncate text-muted-foreground/60">
+                    {modelOverrideSource === "automatic"
+                      ? `Temporary chat model: ${activeChatModelLabel}. Agent setup is ${agentSetupLabel}.`
+                      : `Chat model: ${activeChatModelLabel}. Agent setup: ${agentSetupLabel}.`}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModelOverride(null);
+                    }}
+                    className="shrink-0 text-[11px] font-medium text-violet-500/80 transition-colors hover:text-violet-500"
+                  >
+                    Use agent setup
+                  </button>
+                </div>
+              )}
             </div>
 
             <button
@@ -1160,8 +1277,9 @@ export function ChatView({ isVisible = true }: { isVisible?: boolean }) {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // ── Warm-up state: friendly loading for new users ──
-  const [warmingUp, setWarmingUp] = useState(true);
-  const mountedAtRef = useRef(Date.now());
+  const [warmupExpired, setWarmupExpired] = useState(false);
+  const mountedAtRef = useRef(0);
+  const warmingUp = !warmupExpired && agents.length === 0;
 
   // ── Post-onboarding first-time prompts ──
   const [isPostOnboarding, setIsPostOnboarding] = useState(() => {
@@ -1181,13 +1299,17 @@ export function ChatView({ isVisible = true }: { isVisible?: boolean }) {
   );
 
   // Fetch agents on mount (auto-discovery)
+  const agentsLoadedRef = useRef(false);
   const fetchAgents = useCallback(() => {
-    setAgentsLoading(true);
+    // Only show loading spinner on initial fetch, not on background polls.
+    // Setting loading on every poll clears the agent dropdown momentarily.
+    if (!agentsLoadedRef.current) setAgentsLoading(true);
     fetch("/api/agents")
       .then((r) => r.json())
       .then((data) => {
         const agentList = data.agents || [];
         setAgents(agentList);
+        if (agentList.length > 0) agentsLoadedRef.current = true;
         if (
           agentList.length > 0 &&
           !agentList.find((a: Agent) => a.id === selectedAgent)
@@ -1204,16 +1326,14 @@ export function ChatView({ isVisible = true }: { isVisible?: boolean }) {
       .catch(() => setAgentsLoading(false));
   }, [selectedAgent]);
 
-  // End warm-up when agents appear
   useEffect(() => {
-    if (agents.length > 0) setWarmingUp(false);
-  }, [agents]);
+    mountedAtRef.current = Date.now();
+  }, []);
 
   // End warm-up after 20s timeout
   useEffect(() => {
     const remaining = 20_000 - (Date.now() - mountedAtRef.current);
-    if (remaining <= 0) { setWarmingUp(false); return; }
-    const t = setTimeout(() => setWarmingUp(false), remaining);
+    const t = setTimeout(() => setWarmupExpired(true), Math.max(remaining, 0));
     return () => clearTimeout(t);
   }, []);
 
@@ -1249,9 +1369,15 @@ export function ChatView({ isVisible = true }: { isVisible?: boolean }) {
       .finally(() => setModelsLoaded(true));
   }, []);
 
+  // Fetch models on mount AND whenever the chat view becomes visible again
+  // (user may have added a provider key on /models in the meantime)
   useEffect(() => {
     fetchModels();
   }, [fetchModels]);
+
+  useEffect(() => {
+    if (isVisible) fetchModels();
+  }, [isVisible, fetchModels]);
 
   useEffect(() => {
     if (!isVisible) return;
@@ -1307,8 +1433,8 @@ export function ChatView({ isVisible = true }: { isVisible?: boolean }) {
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* ── Top bar: agent selector ─────────────── */}
       <div className="shrink-0 border-b border-foreground/10 bg-card/60 px-4 md:px-6 py-3">
-        <div className="flex items-center justify-between overflow-x-auto">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
             {/* Agent dropdown */}
             <div className="relative" ref={dropdownRef}>
               <button
@@ -1388,13 +1514,13 @@ export function ChatView({ isVisible = true }: { isVisible?: boolean }) {
               <div className="flex items-center gap-1.5 rounded-md border border-foreground/10 bg-muted/60 px-2 py-1">
                 <Cpu className="h-3 w-3 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">
-                  {formatModel(currentAgent.model)}
+                  Agent setup: {formatModel(currentAgent.model)}
                 </span>
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-1 text-xs text-muted-foreground/60">
+          <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground/60">
             <span>
               {agents.length} agent{agents.length !== 1 ? "s" : ""}
             </span>
