@@ -642,55 +642,34 @@ export async function POST(request: NextRequest) {
           steps.push("Gateway running");
         }
 
-        // 5. Scaffold workspace with foundational files if it doesn't exist yet
+        // 5. Scaffold workspace via CLI — `openclaw agents add main` creates
+        //    the workspace directory and all foundational files (SOUL.md,
+        //    IDENTITY.md, USER.md, AGENTS.md, TOOLS.md, MEMORY.md, etc.)
+        //    using the CLI's own templates, which stay in sync across versions.
         try {
           const workspace = await getDefaultWorkspace();
-          await mkdir(join(workspace, "memory"), { recursive: true });
-
-          const foundationalFiles: { name: string; content: string }[] = [
-            {
-              name: "SOUL.md",
-              content:
-                "# Soul\n\nDefine your agent's core personality, values, and communication style here.\n",
-            },
-            {
-              name: "IDENTITY.md",
-              content:
-                "# Identity\n\nDescribe who your agent is — its name, role, and purpose.\n",
-            },
-            {
-              name: "USER.md",
-              content:
-                "# User\n\nInformation about the user this agent serves — preferences, context, and goals.\n",
-            },
-            {
-              name: "AGENTS.md",
-              content:
-                "# Agents\n\nDocument the agents in your workspace and their responsibilities.\n",
-            },
-            {
-              name: "TOOLS.md",
-              content:
-                "# Tools\n\nList the tools and capabilities available to your agent.\n",
-            },
-            {
-              name: "MEMORY.md",
-              content:
-                "# Memory\n\nLong-term memory and important facts your agent should remember.\n",
-            },
-          ];
-
-          let created = 0;
-          for (const file of foundationalFiles) {
-            const filePath = join(workspace, file.name);
-            const exists = await fileExists(filePath);
-            if (!exists) {
-              await writeFile(filePath, file.content, "utf-8");
-              created++;
+          const workspaceExists = await fileExists(join(workspace, "SOUL.md"));
+          if (!workspaceExists) {
+            try {
+              // Try gateway first (same pattern as agents route)
+              await gatewayCall(
+                "agents.create",
+                { name: "main", workspace },
+                30000,
+              );
+              steps.push("Workspace scaffolded via gateway");
+            } catch {
+              // Fall back to CLI
+              try {
+                await runCli(
+                  ["agents", "add", "main", "--non-interactive", "--workspace", workspace],
+                  30000,
+                );
+                steps.push("Workspace scaffolded via CLI");
+              } catch (cliErr) {
+                steps.push(`Warning: could not scaffold workspace: ${cliErr}`);
+              }
             }
-          }
-          if (created > 0) {
-            steps.push(`Workspace scaffolded (${created} files created)`);
           }
         } catch (err) {
           steps.push(`Warning: could not scaffold workspace: ${err}`);
