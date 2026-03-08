@@ -1,10 +1,14 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, CheckCheck, CheckCircle, Clock, AlertCircle, AlertTriangle, Info, Zap, Terminal, Radio } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSmartPoll } from "@/hooks/use-smart-poll";
+import {
+  notificationStore,
+  type AppNotification,
+} from "@/lib/notification-store";
 
 type NotificationEvent = {
   id: string;
@@ -51,6 +55,7 @@ const STATUS_ICON: Record<string, React.ComponentType<{ className?: string }>> =
   error: AlertCircle,
   warning: AlertTriangle,
   info: Info,
+  success: CheckCircle,
 };
 
 const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -76,6 +81,27 @@ const TYPE_QUERY_PARAM: Record<string, string> = {
   session: "id",
 };
 
+/** Merged display item for the bell panel. */
+type DisplayItem = {
+  id: string;
+  type: string;
+  timestamp: number;
+  title: string;
+  detail?: string;
+  status: string;
+  source?: string;
+  read: boolean;
+  /** If from the notification store, the original notification. */
+  storeNotification?: AppNotification;
+  /** If from polling, the original event. */
+  polledEvent?: NotificationEvent;
+};
+
+function getBellNotifications() {
+  return notificationStore.getBellNotifications();
+}
+const emptyBell: AppNotification[] = [];
+
 export function NotificationCenter() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -94,6 +120,13 @@ export function NotificationCenter() {
   });
   const panelRef = useRef<HTMLDivElement>(null);
   const slowBackgroundPolling = !open;
+
+  // Subscribe to store-pushed bell notifications
+  const storeNotifications = useSyncExternalStore(
+    notificationStore.subscribe,
+    getBellNotifications,
+    () => emptyBell,
+  );
 
   // Persist readIds to localStorage whenever it changes
   useEffect(() => {
@@ -206,7 +239,43 @@ export function NotificationCenter() {
     return () => window.removeEventListener("keydown", handler);
   }, [open]);
 
-  const unreadCount = events.filter((e) => e.timestamp > lastSeenTs && !readIds.has(e.id)).length;
+  // Merge polled events + store notifications into unified display list
+  const displayItems: DisplayItem[] = (() => {
+    const polledItems: DisplayItem[] = events.map((e) => ({
+      id: e.id,
+      type: e.type,
+      timestamp: e.timestamp,
+      title: e.title,
+      detail: e.detail,
+      status: e.status || "info",
+      source: e.source,
+      read: e.timestamp <= lastSeenTs || readIds.has(e.id),
+      polledEvent: e,
+    }));
+
+    const storeItems: DisplayItem[] = storeNotifications.map((n) => ({
+      id: n.id,
+      type: n.type,
+      timestamp: n.timestamp,
+      title: n.title,
+      detail: n.detail,
+      status: n.severity,
+      source: n.source,
+      read: n.read,
+      storeNotification: n,
+    }));
+
+    // Dedup by id, then sort by timestamp desc
+    const byId = new Map<string, DisplayItem>();
+    for (const item of [...polledItems, ...storeItems]) {
+      if (!byId.has(item.id)) byId.set(item.id, item);
+    }
+    return Array.from(byId.values())
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 25);
+  })();
+
+  const unreadCount = displayItems.filter((d) => !d.read).length;
 
   const markAllRead = useCallback(() => {
     const now = Date.now();
@@ -216,24 +285,34 @@ export function NotificationCenter() {
       localStorage.setItem("notif_last_seen", String(now));
       localStorage.removeItem("notif_read_ids");
     } catch { /* ignore */ }
+    notificationStore.markAllRead();
   }, []);
 
   const handleOpen = () => {
     setOpen(!open);
   };
 
-  const handleItemClick = (event: NotificationEvent) => {
-    const base = TYPE_ROUTE[event.type] || "/activity";
-    const paramKey = TYPE_QUERY_PARAM[event.type];
-    const route = paramKey && event.source
-      ? `${base}?${paramKey}=${encodeURIComponent(event.source)}`
+  const handleItemClick = (item: DisplayItem) => {
+    // Mark as read
+    if (item.storeNotification) {
+      notificationStore.markRead(item.id);
+    } else {
+      setReadIds((prev) => {
+        const next = new Set(prev);
+        next.add(item.id);
+        return next;
+      });
+    }
+
+    // If store notification has actions, don't navigate — actions are in-panel
+    if (item.storeNotification?.actions?.length) return;
+
+    // Navigate to relevant page
+    const base = TYPE_ROUTE[item.type] || "/activity";
+    const paramKey = TYPE_QUERY_PARAM[item.type];
+    const route = paramKey && item.source
+      ? `${base}?${paramKey}=${encodeURIComponent(item.source)}`
       : base;
-    // Mark this notification as read
-    setReadIds((prev) => {
-      const next = new Set(prev);
-      next.add(event.id);
-      return next;
-    });
     setOpen(false);
     router.push(route);
   };
@@ -277,14 +356,14 @@ export function NotificationCenter() {
                 </button>
               )}
               <span className="text-xs text-stone-500 dark:text-[#8d98a5]">
-                {events.length} alert{events.length !== 1 ? "s" : ""}
+                {displayItems.length} alert{displayItems.length !== 1 ? "s" : ""}
               </span>
             </div>
           </div>
 
           {/* Events */}
           <div className="max-h-80 overflow-y-auto overscroll-contain" role="list" aria-label="Alert notifications" aria-live="polite">
-            {events.length === 0 ? (
+            {displayItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
                 <Bell className="h-5 w-5 text-stone-300 dark:text-[#4a5260]" />
                 <p className="text-xs text-stone-500 dark:text-[#8d98a5]">
@@ -292,62 +371,85 @@ export function NotificationCenter() {
                 </p>
               </div>
             ) : (
-              events.map((event) => {
-                const isUnread = event.timestamp > lastSeenTs && !readIds.has(event.id);
+              displayItems.map((item) => {
                 const Icon =
-                  event.type === "pairing"
+                  item.type === "pairing"
                     ? TYPE_ICON.pairing
-                    : STATUS_ICON[event.status || "info"] || Info;
+                    : STATUS_ICON[item.status] || Info;
                 return (
-                  <button
-                    key={event.id}
-                    type="button"
-                    onClick={() => handleItemClick(event)}
-                    className={cn(
-                      "flex w-full gap-3 border-b border-stone-100 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-stone-50 dark:border-[#1e2228] dark:hover:bg-[#1a1f25]",
-                      isUnread && "bg-stone-50 dark:bg-[#151920]",
-                    )}
-                  >
-                    <div
+                  <div key={item.id} role="listitem">
+                    <button
+                      type="button"
+                      onClick={() => handleItemClick(item)}
                       className={cn(
-                        "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg",
-                        event.status === "error"
-                          ? "bg-red-100 dark:bg-red-500/10"
-                          : event.status === "warning"
-                            ? "bg-amber-100 dark:bg-amber-500/10"
-                            : "bg-stone-100 dark:bg-[#20252a]",
+                        "flex w-full gap-3 border-b border-stone-100 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-stone-50 dark:border-[#1e2228] dark:hover:bg-[#1a1f25]",
+                        !item.read && "bg-stone-50 dark:bg-[#151920]",
                       )}
                     >
-                      <Icon
+                      <div
                         className={cn(
-                          "h-3 w-3",
-                          event.status === "error"
-                            ? "text-red-500 dark:text-red-400"
-                            : event.status === "warning"
-                              ? "text-amber-500 dark:text-amber-400"
-                              : "text-stone-400 dark:text-[#8d98a5]",
+                          "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg",
+                          item.status === "error"
+                            ? "bg-red-100 dark:bg-red-500/10"
+                            : item.status === "warning"
+                              ? "bg-amber-100 dark:bg-amber-500/10"
+                              : item.status === "success"
+                                ? "bg-emerald-100 dark:bg-emerald-500/10"
+                                : "bg-stone-100 dark:bg-[#20252a]",
                         )}
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium text-stone-900 dark:text-[#f5f7fa]">
-                        {event.title}
-                      </p>
-                      {event.detail && (
-                        <p className="mt-0.5 truncate text-xs text-stone-500 dark:text-[#8d98a5]">
-                          {event.detail}
-                        </p>
-                      )}
-                      <div className="mt-1 flex items-center gap-2">
-                        <p className="text-xs text-stone-400 dark:text-[#7a8591]">
-                          {timeAgo(event.timestamp)}
-                        </p>
-                        <span className="text-xs text-stone-300 dark:text-[#4a5260]">
-                          {TYPE_ROUTE[event.type]?.slice(1) || "activity"}
-                        </span>
+                      >
+                        <Icon
+                          className={cn(
+                            "h-3 w-3",
+                            item.status === "error"
+                              ? "text-red-500 dark:text-red-400"
+                              : item.status === "warning"
+                                ? "text-amber-500 dark:text-amber-400"
+                                : item.status === "success"
+                                  ? "text-emerald-500 dark:text-emerald-400"
+                                  : "text-stone-400 dark:text-[#8d98a5]",
+                          )}
+                        />
                       </div>
-                    </div>
-                  </button>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium text-stone-900 dark:text-[#f5f7fa]">
+                          {item.title}
+                        </p>
+                        {item.detail && (
+                          <p className="mt-0.5 truncate text-xs text-stone-500 dark:text-[#8d98a5]">
+                            {item.detail}
+                          </p>
+                        )}
+                        {/* Action buttons for store notifications */}
+                        {item.storeNotification?.actions && item.storeNotification.actions.length > 0 && (
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            {item.storeNotification.actions.map((action) => (
+                              <button
+                                key={action.label}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  action.callback();
+                                  notificationStore.markRead(item.id);
+                                }}
+                                className="rounded bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700 transition-colors hover:bg-stone-200 dark:bg-[#20252a] dark:text-[#c8d0da] dark:hover:bg-[#2a2f36]"
+                              >
+                                {action.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-1 flex items-center gap-2">
+                          <p className="text-xs text-stone-400 dark:text-[#7a8591]">
+                            {timeAgo(item.timestamp)}
+                          </p>
+                          <span className="text-xs text-stone-300 dark:text-[#4a5260]">
+                            {TYPE_ROUTE[item.type]?.slice(1) || item.type}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
                 );
               })
             )}
