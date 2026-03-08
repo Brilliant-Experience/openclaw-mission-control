@@ -30,6 +30,8 @@ const SECTION_TO_PATH: Record<string, string> = {
   security: "/security",
   permissions: "/permissions",
   tailscale: "/tailscale",
+  budget: "/budget",
+  "quick-actions": "/quick-actions",
   browser: "/browser",
   calendar: "/calendar",
   integrations: "/integrations",

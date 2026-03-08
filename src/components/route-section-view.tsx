@@ -132,6 +132,14 @@ const HelpView = dynamic(
   () => import("@/components/help-view").then((m) => m.HelpView),
   { loading: () => <SectionLoading /> }
 );
+const OpenRouterBudgetView = dynamic(
+  () => import("@/components/openrouter-budget-view").then((m) => m.OpenRouterBudgetView),
+  { loading: () => <SectionLoading /> }
+);
+const QuickActionsView = dynamic(
+  () => import("@/components/quick-actions-view").then((m) => m.QuickActionsView),
+  { loading: () => <SectionLoading /> }
+);
 
 const isAgentbayHosting = process.env.NEXT_PUBLIC_AGENTBAY_HOSTED === "true";
 
@@ -167,7 +175,9 @@ export type DashboardSection =
   | "hooks"
   | "doctor"
   | "activity"
-  | "help";
+  | "help"
+  | "budget"
+  | "quick-actions";
 
 function SectionContent({ section }: { section: DashboardSection }) {
   if (isAgentbayHosting && section === "tailscale") {
@@ -237,6 +247,10 @@ function SectionContent({ section }: { section: DashboardSection }) {
       return <ActivityView />;
     case "help":
       return <HelpView />;
+    case "budget":
+      return <OpenRouterBudgetView />;
+    case "quick-actions":
+      return <QuickActionsView />;
     default:
       return <DashboardView />;
   }

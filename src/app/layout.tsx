@@ -24,9 +24,9 @@ const geistMono = Geist_Mono({
 const isHosted = process.env.AGENTBAY_HOSTED === "true";
 
 export const metadata: Metadata = {
-  title: "Mission Control — OpenClaw GUI Dashboard for Local AI Agents",
+  title: "Mission Control — Dark Ops Intelligence Center",
   description:
-    "Mission Control is the open-source OpenClaw GUI and AI agent dashboard. " +
+    "Mission Control — Dark Ops Intelligence Center. " +
     "Monitor, chat with, and manage your local AI agents, models, cron jobs, " +
     "vector memory, and skills — all from a single local AI management tool " +
     "that runs entirely on your machine.",
@@ -48,26 +48,24 @@ export const metadata: Metadata = {
     "private AI",
   ],
   manifest: isHosted ? undefined : "/manifest.json",
-  applicationName: "Mission Control",
-  authors: [{ name: "OpenClaw" }],
-  creator: "OpenClaw",
-  publisher: "OpenClaw",
+  applicationName: "Mission Control — Dark Ops Intelligence Center",
+  authors: [{ name: "Brilliant Experience" }],
+  creator: "Brilliant Experience",
+  publisher: "Brilliant Experience",
   category: "technology",
   openGraph: {
     type: "website",
-    siteName: "Mission Control — OpenClaw GUI",
-    title: "Mission Control — The AI Agent Dashboard for OpenClaw",
+    siteName: "Mission Control — Dark Ops Intelligence Center",
+    title: "Mission Control — Dark Ops Intelligence Center",
     description:
-      "Monitor, chat with, and manage your local AI agents from one sleek dashboard. " +
-      "Open-source, self-hosted, zero cloud. The ultimate OpenClaw GUI.",
+      "Monitor, chat with, and manage your local AI agents from one sleek dashboard.",
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Mission Control — OpenClaw GUI & AI Agent Dashboard",
+    title: "Mission Control — Dark Ops Intelligence Center",
     description:
-      "Open-source local AI management tool. Monitor agents, models, cron jobs, " +
-      "vector memory and more — entirely on your machine.",
+      "Monitor, chat with, and manage your local AI agents from one sleek dashboard.",
   },
   appleWebApp: {
     capable: true,
