@@ -96,9 +96,9 @@ const PROVIDER_CAPABILITIES: Record<string, UsageAlertProviderCapability> = {
   },
   mistral: {
     provider: "mistral",
-    providerUsageApiKnown: true,
+    providerUsageApiKnown: false,
     docsUrl: "https://docs.mistral.ai/api/",
-    note: "Mistral usage data can be fetched via the /v1/usage endpoint with your API key.",
+    note: "Mistral has no confirmed public billing API — costs are estimated from local token telemetry. The collector will attempt /v1/usage and fall back gracefully.",
   },
   minimax: {
     provider: "minimax",
