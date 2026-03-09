@@ -42,6 +42,8 @@ import {
   HelpCircle,
   Puzzle,
   Rocket,
+  TrendingUp,
+  Zap,
 } from "lucide-react";
 import { getChatUnreadCount, subscribeChatStore } from "@/lib/chat-store";
 
@@ -88,6 +90,9 @@ const navItems: NavItem[] = [
   { section: "security", label: "Security", icon: ShieldCheck, href: "/security" },
   { section: "hooks", label: "Hooks", icon: Webhook, href: "/hooks" },
   { section: "settings", label: "Preferences", icon: Settings2, href: "/settings" },
+  // ── BE Ops ──
+  { group: "BE Ops", section: "budget", label: "OR Budget", icon: TrendingUp, href: "/budget" },
+  { section: "quick-actions", label: "Quick Actions", icon: Zap, href: "/quick-actions" },
   // ── System ──
   { group: "System", section: "doctor", label: "Doctor", icon: Stethoscope, href: "/doctor" },
   { section: "terminal", label: "Terminal", icon: SquareTerminal, href: "/terminal" },
@@ -156,6 +161,8 @@ function deriveSectionFromPath(pathname: string): string | null {
     "activity",
     "setup",
     "help",
+    "budget",
+    "quick-actions",
   ]);
   return known.has(first) ? first : null;
 }

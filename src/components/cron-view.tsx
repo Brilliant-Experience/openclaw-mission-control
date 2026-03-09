@@ -2554,6 +2554,52 @@ export function CronView() {
           />
         )}
 
+        {/* Fleet delivery summary bar */}
+        {jobs.length > 0 && (() => {
+          const enabled = jobs.filter((j) => j.enabled);
+          const ok = enabled.filter((j) => {
+            const local = runOutput[j.id];
+            const localIsNewer = Boolean(local) && (!j.state.lastRunAtMs || (local?.runStartedAtMs || 0) > j.state.lastRunAtMs);
+            if (localIsNewer) return local?.status === "done";
+            return j.state.lastStatus === "ok";
+          });
+          const erroring = enabled.filter((j) => {
+            const local = runOutput[j.id];
+            const localIsNewer = Boolean(local) && (!j.state.lastRunAtMs || (local?.runStartedAtMs || 0) > j.state.lastRunAtMs);
+            if (localIsNewer) return local?.status === "error";
+            return j.state.lastStatus === "error";
+          });
+          const deliveryIssue = enabled.filter((j) => describeDelivery(j.delivery).hasIssue);
+          const disabled = jobs.filter((j) => !j.enabled);
+          return (
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs dark:border-[#2c343d] dark:bg-[#171a1d]">
+              <span className="font-medium text-foreground/70">{jobs.length} jobs</span>
+              <span className="text-muted-foreground/40">|</span>
+              {ok.length > 0 && (
+                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  {ok.length} ok
+                </span>
+              )}
+              {erroring.length > 0 && (
+                <span className="flex items-center gap-1 font-semibold text-red-600 dark:text-red-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                  {erroring.length} error{erroring.length > 1 ? "s" : ""}
+                </span>
+              )}
+              {deliveryIssue.length > 0 && (
+                <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-3 w-3" />
+                  {deliveryIssue.length} missing target
+                </span>
+              )}
+              {disabled.length > 0 && (
+                <span className="text-muted-foreground/60">{disabled.length} disabled</span>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Empty state */}
         {jobs.length === 0 && !showCreate && (
           <div className="flex flex-col items-center justify-center py-16">
@@ -2647,6 +2693,25 @@ export function CronView() {
                       <span className="flex items-center gap-0.5 rounded bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
                         <AlertTriangle className="h-2.5 w-2.5" />
                         missing target
+                      </span>
+                    )}
+                    {/* Delivery status — delivered / not-delivered */}
+                    {job.enabled && !delivery.hasIssue && st.lastRunAtMs && (
+                      effectiveStatus === "ok" ? (
+                        <span className="flex items-center gap-0.5 rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                          <CheckCircle className="h-2.5 w-2.5" />
+                          delivered
+                        </span>
+                      ) : effectiveStatus === "error" ? (
+                        <span className="flex items-center gap-0.5 rounded bg-red-500/10 px-1.5 py-0.5 text-xs font-semibold text-red-700 dark:text-red-300">
+                          <AlertCircle className="h-2.5 w-2.5" />
+                          not-delivered
+                        </span>
+                      ) : null
+                    )}
+                    {job.enabled && !delivery.hasIssue && !st.lastRunAtMs && (
+                      <span className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-500 dark:bg-[#20252a] dark:text-[#8d98a5]">
+                        never run
                       </span>
                     )}
                     {job.payload.model && (

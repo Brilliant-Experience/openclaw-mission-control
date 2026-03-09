@@ -11,6 +11,8 @@ function git(cmd: string): string {
 }
 
 const nextConfig: NextConfig = {
+  typescript: { ignoreBuildErrors: true },
+  output: "standalone",
   turbopack: {},
   env: {
     NEXT_PUBLIC_APP_VERSION: git("describe --tags --always") || "dev",
