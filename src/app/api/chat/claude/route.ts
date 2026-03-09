@@ -66,7 +66,7 @@ export async function POST(request: Request): Promise<Response> {
   (async () => {
     try {
       const anthropicStream = anthropic.messages.stream({
-        model: "claude-3-5-haiku-20241022",
+        model: process.env.CLAUDE_CONSOLE_MODEL || "claude-sonnet-4-6",
         max_tokens: 1024,
         system: buildSystemPrompt(systemContext),
         messages: messages.map((m) => ({
