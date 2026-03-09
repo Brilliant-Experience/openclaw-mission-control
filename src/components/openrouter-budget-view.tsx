@@ -247,8 +247,8 @@ export function OpenRouterBudgetView() {
     <SectionLayout>
       <SectionHeader
         title="OpenRouter Budget"
-        subtitle="Per-agent API key spend vs. limit"
-        icon={<TrendingUp className="h-4 w-4" />}
+        description="Per-agent API key spend vs. limit"
+        
         actions={
           <div className="flex items-center gap-2">
             {lastFetched && (

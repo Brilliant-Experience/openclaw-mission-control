@@ -7,7 +7,7 @@ services:
       - /opt/openclaw/mission-control/.env
     environment:
       # Gateway URL (uses token from env_file above)
-      - OPENCLAW_GATEWAY_URL=ws://openclaw-openclaw-gateway-1:18789
+      - OPENCLAW_GATEWAY_URL=http://openclaw-openclaw-gateway-1:18789
       - OPENCLAW_AUTH_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
       # Auth usernames (passwords come from env_file)
       - AUTH_USERNAME_1=john

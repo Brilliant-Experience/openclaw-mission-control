@@ -407,8 +407,8 @@ export function QuickActionsView() {
     <SectionLayout>
       <SectionHeader
         title="Quick Actions"
-        subtitle="Operational controls — no SSH needed"
-        icon={<Zap className="h-4 w-4" />}
+        description="Operational controls — no SSH needed"
+        
       />
       <SectionBody>
         <div className="space-y-6">
@@ -468,10 +468,10 @@ export function QuickActionsView() {
               actionKey="validate-config"
               renderResult={(r) => (
                 <div>
-                  <p className="font-medium">{r.valid ? "Config is valid ✓" : "Config has issues"}</p>
+                  <p className="font-medium">{r.valid as boolean ? "Config is valid ✓" : "Config has issues"}</p>
                   {r.result && (
                     <pre className="mt-2 overflow-x-auto rounded bg-black/20 px-2 py-1.5 font-mono text-[10px] leading-relaxed text-emerald-300/80 max-h-32">
-                      {JSON.stringify(r.result, null, 2)}
+                      {JSON.stringify(r.result as Record<string, unknown>, null, 2)}
                     </pre>
                   )}
                 </div>

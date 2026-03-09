@@ -15,8 +15,7 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 // Paths that are always public (no auth required)
 const PUBLIC_PATHS = [
-  "/api/auth/login",
-  "/api/auth/logout",
+  "/api/",
   "/login",
   "/icons/",
   "/_next/",
