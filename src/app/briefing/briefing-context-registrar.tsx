@@ -1,6 +1,6 @@
 "use client";
 
-import { useOpsContext } from "@/components/use-ops-context";
+import { useOpsContext } from "@/hooks/use-ops-context";
 
 /**
  * Thin client-component island that registers the Briefing page with the
