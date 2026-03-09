@@ -50,3 +50,6 @@ next-env.d.ts
 *.png
 /e2e/
 .playwright-cli/
+
+# Build loop artifacts
+_build/
