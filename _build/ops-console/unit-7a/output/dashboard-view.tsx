@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useOpsContext } from "@/hooks/use-ops-context";
+import { useOpsContext } from "../unit-3b/output/use-ops-context";
 
 /* ── Types ───────────────────────────────────────────────────────────────────── */
 
