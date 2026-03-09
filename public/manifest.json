@@ -1,13 +1,14 @@
 {
-  "name": "Mission Control — OpenClaw AI Agent Dashboard",
-  "short_name": "MissionCtrl",
-  "description": "Open-source OpenClaw GUI to monitor, chat with, and manage your local AI agents, models, memory, and skills — all from your browser.",
-  "start_url": "/",
+  "name": "Mission Control",
+  "short_name": "MC",
+  "description": "Brilliant Experience — Agent Operations Dashboard",
   "display": "standalone",
-  "background_color": "#08080c",
-  "theme_color": "#7c3aed",
-  "orientation": "any",
-  "categories": ["productivity", "utilities", "developer-tools"],
+  "orientation": "portrait",
+  "theme_color": "#0d0f12",
+  "background_color": "#0d0f12",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "lang": "en",
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -20,6 +21,14 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "url": "/dashboard",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
