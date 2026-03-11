@@ -220,6 +220,22 @@ async function probeCustomEndpoint(
 /* ── GET /api/onboard ──────────────────────────────── */
 
 export async function GET() {
+  // If SKIP_ONBOARDING is set, report as fully configured — skip the wizard.
+  if (process.env.SKIP_ONBOARDING === "true") {
+    const gatewayUrl = await getGatewayUrl();
+    const gateway = await checkGatewayHealth(gatewayUrl);
+    return NextResponse.json({
+      installed: true,
+      configured: true,
+      configExists: true,
+      hasModel: true,
+      hasApiKey: true,
+      gatewayRunning: gateway.running,
+      version: gateway.version || null,
+      gatewayUrl,
+    });
+  }
+
   try {
     const home = getOpenClawHome();
     const configPath = join(home, "openclaw.json");
