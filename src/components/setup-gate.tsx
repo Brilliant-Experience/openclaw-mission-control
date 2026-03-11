@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, createContext, useContext, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { TypingDots } from "@/components/typing-dots";
 
@@ -74,10 +75,17 @@ export function resetOnboardingSkip() {
 let fetchInFlight: Promise<void> | null = null;
 
 export function SetupGate({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const skipped = useSkippedOnboarding();
+
+  // Skip the gate entirely on the login page — it has no session yet
+  // and the /api/onboard call would fail with 401.
+  if (pathname === "/login") {
+    return <>{children}</>;
+  }
 
   const fetchStatus = useCallback(async () => {
     // Deduplicate in-flight requests first (before cache check) to avoid

@@ -6,6 +6,7 @@ import { SetupGate } from "@/components/setup-gate";
 import { Sidebar } from "@/components/sidebar";
 import { OpsConsole } from "@/components/ops-console";
 import { OpsContextProvider } from "@/components/ops-context-provider";
+import { AppShell } from "@/components/app-shell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -45,13 +46,7 @@ export default function RootLayout({
         >
           <OpsContextProvider>
             <SetupGate>
-              <div className="flex h-screen w-full overflow-hidden">
-                <Sidebar />
-                <main className="relative flex flex-1 flex-col overflow-hidden min-w-0">
-                  {children}
-                </main>
-                <OpsConsole />
-              </div>
+              <AppShell>{children}</AppShell>
             </SetupGate>
           </OpsContextProvider>
         </ThemeProvider>
