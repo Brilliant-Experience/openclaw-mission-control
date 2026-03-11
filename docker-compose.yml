@@ -9,11 +9,12 @@ services:
       # Gateway URL (uses token from env_file above)
       - OPENCLAW_GATEWAY_URL=http://openclaw-openclaw-gateway-1:18789
       - OPENCLAW_AUTH_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
-      # Auth usernames (passwords come from env_file)
-      - AUTH_USERNAME_1=john
-      - AUTH_PASSWORD_1=${MC_PASSWORD_JOHN}
-      - AUTH_USERNAME_2=jo
-      - AUTH_PASSWORD_2=${MC_PASSWORD_JO}
+      # Google OAuth (credentials from env_file)
+      - AUTH_GOOGLE_ID=${AUTH_GOOGLE_ID}
+      - AUTH_GOOGLE_SECRET=${AUTH_GOOGLE_SECRET}
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_TRUST_HOST=true
+      - NEXTAUTH_URL=https://openclaw-vps.tail28b62f.ts.net:3030
     volumes:
       - /opt/openclaw/config:/data/config:ro
       - /opt/openclaw/workspace/team:/data/workspace:ro
