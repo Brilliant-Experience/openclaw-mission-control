@@ -33,13 +33,14 @@ async function authenticate(page: Page) {
   }
 }
 
+// Links that are directly visible in the sidebar (no submenu expansion needed)
 const SIDEBAR_LINKS = [
   "/dashboard",
   "/chat",
   "/agents",
   "/sessions",
+  "/tasks",
   "/cron",
-  "/heartbeat",
   "/memory",
   "/skills",
   "/models",
@@ -116,16 +117,11 @@ test.describe("Authenticated Mission Control", () => {
     }
   });
 
-  test("ops console panel is visible on dashboard", async ({ page }) => {
+  test("ops console toggle button is present", async ({ page }) => {
     await page.goto(`${BASE}/dashboard`);
     await page.setViewportSize({ width: 1600, height: 1000 });
-    // Look for the ops console (right panel)
-    const opsConsole = page.locator('[data-testid="ops-console"], [class*="ops-console"]').first();
-    // If no test ID, look for the third column in the flex layout
-    const thirdColumn = page.locator(".flex.h-screen > *:nth-child(3)").first();
-    const hasOpsConsole =
-      (await opsConsole.isVisible().catch(() => false)) ||
-      (await thirdColumn.isVisible().catch(() => false));
-    expect(hasOpsConsole).toBe(true);
+    // The ops console has a toggle button visible on the page
+    const toggle = page.getByRole("button", { name: /ops console/i }).first();
+    await expect(toggle).toBeVisible({ timeout: 10000 });
   });
 });
