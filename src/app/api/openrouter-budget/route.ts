@@ -8,7 +8,6 @@ const AGENT_KEYS: Record<string, string> = {
   OPENROUTER_KEY_EA_JOHN: "EA — John (Donna)",
   OPENROUTER_KEY_EA_JO: "EA — Jo (James)",
   OPENROUTER_KEY_BUILD: "Build (Hondo)",
-  OPENROUTER_KEY_DELIVERY_ACS: "Delivery ACS",
   OPENROUTER_KEY_DEAL_CLOSER: "Deal Closer (Draper)",
   OPENROUTER_KEY_MARKET_INTEL: "Market Intel (Ramsey)",
   OPENROUTER_KEY_WATCH_SYSTEMS: "Watch Systems (Scotty)",
