@@ -5,14 +5,14 @@ export const dynamic = "force-dynamic";
 // Each agent maps to an env var name.
 // Key name → display label.
 const AGENT_KEYS: Record<string, string> = {
-  OPENROUTER_KEY_EA_JOHN: "EA — John",
-  OPENROUTER_KEY_EA_JO: "EA — Jo",
-  OPENROUTER_KEY_BUILD: "Build (Hamilton)",
+  OPENROUTER_KEY_EA_JOHN: "EA — John (Donna)",
+  OPENROUTER_KEY_EA_JO: "EA — Jo (James)",
+  OPENROUTER_KEY_BUILD: "Build (Hondo)",
   OPENROUTER_KEY_DELIVERY_ACS: "Delivery ACS",
-  OPENROUTER_KEY_DEAL_CLOSER: "Deal Closer",
-  OPENROUTER_KEY_MARKET_INTEL: "Market Intel",
-  OPENROUTER_KEY_WATCH_SYSTEMS: "Watch Systems",
-  OPENROUTER_KEY_ORCHESTRATOR: "Orchestrator",
+  OPENROUTER_KEY_DEAL_CLOSER: "Deal Closer (Draper)",
+  OPENROUTER_KEY_MARKET_INTEL: "Market Intel (Ramsey)",
+  OPENROUTER_KEY_WATCH_SYSTEMS: "Watch Systems (Scotty)",
+  OPENROUTER_KEY_ORCHESTRATOR: "Orchestrator (Ocean)",
 };
 
 type OpenRouterKeyData = {
