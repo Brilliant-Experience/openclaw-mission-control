@@ -18,7 +18,7 @@ const SECTION_TO_PATH: Record<string, string> = {
   docs: "/documents",
   documents: "/documents",
   config: "/config",
-  settings: "/config",
+  settings: "/settings",
   skills: "/skills",
   models: "/models",
   accounts: "/accounts",
@@ -31,12 +31,17 @@ const SECTION_TO_PATH: Record<string, string> = {
   permissions: "/permissions",
   tailscale: "/tailscale",
   budget: "/budget",
+  briefing: "/briefing",
   "quick-actions": "/quick-actions",
   browser: "/browser",
   calendar: "/calendar",
   integrations: "/integrations",
   search: "/search",
   help: "/help",
+  setup: "/onboard",
+  activity: "/activity",
+  hooks: "/hooks",
+  doctor: "/doctor",
 };
 
 const isAgentbayHosted =
